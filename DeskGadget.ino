@@ -39,10 +39,53 @@ typedef enum wifi_s {
 const char *countryCode = "gb";
 const char *cityName = "Stockton-On-Tees";
 
+const int refreshInterval = 120;//seconds
+int lastRefresh = 0;
+
 
 OWMconditions      owCC;
 OWMfiveForecast    owF5;
 WifiStat           WF_status;
+
+void connectWiFiInit(void) {
+  WiFi.hostname(nodename);
+  String ssid   = wifi_ssid;
+  String passwd = wifi_passwd;
+  WiFi.begin(ssid.c_str(), passwd.c_str());
+
+  Serial.print("Connecting");
+
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_open_iconic_www_2x_t);
+  u8g2.drawGlyph(0, 18, 81);
+  u8g2.setFont(u8g2_font_bitcasual_t_all);
+  u8g2.setCursor(19, 14);
+  u8g2.print(ssid);
+  u8g2.setCursor(0, 30);
+  u8g2.print("Connecting");
+  u8g2.sendBuffer();  
+  
+
+  int dotCount = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    dotCount++;
+
+    Serial.print(".");
+    u8g2.print(".");
+
+    if (dotCount >= 10) {
+       dotCount = 0;
+       u8g2.setDrawColor(0);
+       u8g2.drawBox(0, 18, u8g2.getDisplayWidth()-1, u8g2.getDisplayHeight()-1);
+       u8g2.setDrawColor(1);
+       u8g2.setCursor(0, 30);
+       u8g2.print("Connecting");
+    }
+    u8g2.sendBuffer();
+     
+    delay(100);
+  }
+}
 
 void printWiFiStatus() {  
   u8g2.clearBuffer();          // clear the internal memory
@@ -70,47 +113,6 @@ void printWiFiStatus() {
   Serial.println(" dBm");
 }
 
-void connectWiFiInit(void) {
-  WiFi.hostname(nodename);
-  String ssid   = wifi_ssid;
-  String passwd = wifi_passwd;
-  WiFi.begin(ssid.c_str(), passwd.c_str());
-
-  u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_open_iconic_www_2x_t);
-  u8g2.drawGlyph(0, 18, 81);
-  u8g2.setFont(u8g2_font_bitcasual_t_all);
-  u8g2.setCursor(19, 14);
-  u8g2.print(ssid);
-  u8g2.setCursor(0, 30);
-  u8g2.print("Connecting");
-  u8g2.sendBuffer();  
-
-  int dotCount = 0;
-  while (WiFi.status() != WL_CONNECTED) {
-    dotCount++;
-
-    Serial.print(".");
-    u8g2.print(".");
-    u8g2.sendBuffer();
-
-    if (dotCount >= 6) {
-       dotCount = 0;
-       u8g2.setDrawColor(0);
-       u8g2.drawBox(0, 18, u8g2.getDisplayWidth()-1, u8g2.getDisplayHeight()-1);
-       u8g2.setDrawColor(1);
-       u8g2.setCursor(0, 30);
-       u8g2.print("Connecting");
-    }
-     
-    delay(100);
-  }
-
-  printWiFiStatus();
-
-  delay(1000);
-}
-
 String dateTime(String timestamp) {
   time_t ts = timestamp.toInt();
   char buff[30];
@@ -120,12 +122,14 @@ String dateTime(String timestamp) {
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n\n\n\n");
+  Serial.println("\n\n\n");
   u8g2.begin();  
   u8g2.enableUTF8Print();
 
   connectWiFiInit();
-  WF_status  = W_TRY;
+  printWiFiStatus();
+  delay(1000);
+  MDNS.begin(nodename);
 }
 
 void currentConditions(void) {
@@ -151,14 +155,13 @@ void fiveDayFcast(void) {
 }
 
 void loop() {
-  if (WF_status == W_TRY) {
-    if (WiFi.status() == WL_CONNECTED) {
-      MDNS.begin(nodename);
-      WF_status = W_READY;
+  if (WiFi.status() == WL_CONNECTED) {
+    if (lastRefresh == 0 || lastRefresh > refreshInterval * 1000 && millis() - lastRefresh > refreshInterval * 1000) {
       Serial.println("Current Conditions: ");
       currentConditions();
       Serial.println("Five days forecast: ");
       fiveDayFcast();
+      lastRefresh = millis();
     }
   }
   delay(1000);

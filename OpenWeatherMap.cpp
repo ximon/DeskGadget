@@ -63,7 +63,7 @@ void OWMrequest::endObject() {
   currentKey = "";
 }
 
-//------------------------------------------ Current weather conditions from openweatrhermap.org --------------
+//------------------------------------------ Current weather conditions from openweathermap.org --------------
 void OWMconditions::updateConditions(OWM_conditions *conditions, String apiKey, String country, String city, String units, String language) {
   this->conditions = conditions;
   OWMrequest::init();
@@ -72,6 +72,10 @@ void OWMconditions::updateConditions(OWM_conditions *conditions, String apiKey, 
   if (language != "") url += "&lang="  + language;
   if (units != "")    url += "&units=" + units;
   url +=  + "&appid=" + apiKey;
+
+  Serial.print("Getting conditions from: ");
+  Serial.println(url);
+  
   doUpdate(url);
   this->conditions = nullptr;
 }
@@ -142,7 +146,7 @@ void OWMconditions::value(String value) {
   }
 }
 
-//------------------------------------------ Five day forecast from openweatrhermap.org -----------------------
+//------------------------------------------ Five day forecast from openweathermap.org -----------------------
 byte OWMfiveForecast::updateForecast(OWM_fiveForecast *forecasts, byte maxForecasts, String apiKey, String country, String city, String units, String language) {
   this->forecasts = forecasts;
   this->max_forecasts = maxForecasts;
