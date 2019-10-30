@@ -1,5 +1,6 @@
 #include <String.h>
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <U8g2lib.h>
 
 #ifdef U8X8_HAVE_HW_SPI
@@ -15,13 +16,14 @@
 #include <ESP8266HTTPClient.h>
 #include <Time.h>
 #include <TimeLib.h>
-#include "OpenWeatherMap.h"
 
-
-const char *ow_key      = "1999df78b50d8d6cad6efef4a8e0ac2a";
 const char *nodename    = "esp8266-weather";
 const char *wifi_ssid   = "VM7430922";
 const char *wifi_passwd = "8dqkvzYTjchy";   
+
+const String APIKEY      = "1999df78b50d8d6cad6efef4a8e0ac2a";
+const String countryCode = "gb";
+const String cityName = "Stockton-On-Tees";
 
 WiFiClient client;
 
@@ -36,16 +38,20 @@ typedef enum wifi_s {
   W_AP = 0, W_READY, W_TRY
 } WifiStat;
 
-const char *countryCode = "gb";
-const char *cityName = "Stockton-On-Tees";
 
-const int refreshInterval = 120;//seconds
+
+const int refreshInterval = 60;//seconds
 int lastRefresh = 0;
 
-
-OWMconditions      owCC;
-OWMfiveForecast    owF5;
 WifiStat           WF_status;
+
+String result;
+
+String weather = "";
+String weatherDescription = "";
+float intTemperature = 95;
+float extTemperature;
+float wind;
 
 void connectWiFiInit(void) {
   WiFi.hostname(nodename);
@@ -56,12 +62,14 @@ void connectWiFiInit(void) {
   Serial.print("Connecting");
 
   u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_open_iconic_www_2x_t);
-  u8g2.drawGlyph(0, 18, 81);
+  u8g2.setFont(u8g2_font_open_iconic_www_4x_t);
+  u8g2.drawGlyph(0, 32, 81);
+
   u8g2.setFont(u8g2_font_bitcasual_t_all);
-  u8g2.setCursor(19, 14);
+  u8g2.setCursor(38, 14);
   u8g2.print(ssid);
-  u8g2.setCursor(0, 30);
+  
+  u8g2.setCursor(38, 30);
   u8g2.print("Connecting");
   u8g2.sendBuffer();  
   
@@ -76,9 +84,9 @@ void connectWiFiInit(void) {
     if (dotCount >= 10) {
        dotCount = 0;
        u8g2.setDrawColor(0);
-       u8g2.drawBox(0, 18, u8g2.getDisplayWidth()-1, u8g2.getDisplayHeight()-1);
+       u8g2.drawBox(38, 18, u8g2.getDisplayWidth()-1, u8g2.getDisplayHeight()-1);
        u8g2.setDrawColor(1);
-       u8g2.setCursor(0, 30);
+       u8g2.setCursor(38, 30);
        u8g2.print("Connecting");
     }
     u8g2.sendBuffer();
@@ -87,30 +95,35 @@ void connectWiFiInit(void) {
   }
 }
 
-void printWiFiStatus() {  
-  u8g2.clearBuffer();          // clear the internal memory
-  u8g2.setFont(u8g2_font_open_iconic_www_2x_t);
-  u8g2.drawGlyph(0, 18, 81);
-  u8g2.setFont(u8g2_font_bitcasual_t_all);
-  u8g2.setCursor(19, 14);
-  u8g2.print(WiFi.SSID());
-  u8g2.drawStr(0,30,"Connected!");  // write something to the internal memory
-  u8g2.sendBuffer();          // transfer internal memory to the display
-  
+void printWiFiStatus() {
   // print the SSID of the network you're attached to:
   Serial.print("SSID: ");
   Serial.println(WiFi.SSID());
+  
+  u8g2.clearBuffer();          // clear the internal memory
+  u8g2.setFont(u8g2_font_open_iconic_www_4x_t);  
+  u8g2.drawGlyph(0, 32, 81);
+  
+  u8g2.setFont(u8g2_font_bitcasual_t_all);
+  u8g2.setCursor(38, 14);
+  u8g2.print(WiFi.SSID());
 
   // print your WiFi shield's IP address:
   IPAddress ip = WiFi.localIP();
   Serial.print("IP Address: ");
   Serial.println(ip);
+  
+  //u8g2.drawStr(0,30,"IP: ");  // write something to the internal memory
+  u8g2.setCursor(38, 30);
+  u8g2.print(ip);
 
   // print the received signal strength:
   long rssi = WiFi.RSSI();
   Serial.print("signal strength (RSSI):");
   Serial.print(rssi);
   Serial.println(" dBm");
+
+  u8g2.sendBuffer();          // transfer internal memory to the display
 }
 
 String dateTime(String timestamp) {
@@ -132,35 +145,83 @@ void setup() {
   MDNS.begin(nodename);
 }
 
-void currentConditions(void) {
-  OWM_conditions *ow_cond = new OWM_conditions;
-  owCC.updateConditions(ow_cond, ow_key, countryCode, cityName, "metric");
-  Serial.print("Latitude & Longtitude: ");
-  Serial.print("<" + ow_cond->longtitude + " " + ow_cond->latitude + "> @" + dateTime(ow_cond->dt) + ": ");
-  Serial.println("icon: " + ow_cond->icon + ", " + " temp.: " + ow_cond->temp + ", press.: " + ow_cond->pressure);
-  Serial.println("Descr: " + ow_cond->description);
-  delete ow_cond;
+void getWeatherData() {
+  if (client.connect(server, 80)){ //starts client connection, checks for connection
+    client.println("GET /data/2.5/weather?q=" + cityName + "," + countryCode + "&units=metric&APPID=" + APIKEY);
+    client.println("Host: api.openweathermap.org");
+    client.println("User-Agent: ArduinoWiFi/1.1");
+    client.println("Connection: close");
+    client.println();
+  } else {
+    Serial.println("connection failed");        //error message if no client connect
+    Serial.println();
+  }
+
+  while(client.connected() && !client.available()) 
+  delay(1);                                          //waits for data
+  while (client.connected() || client.available())    
+  {                                             //connected or data available
+    char c = client.read();                     //gets byte from ethernet buffer
+    result = result+c;
+  }
+
+  client.stop();                                      //stop client
+  result.replace('[', ' ');
+  result.replace(']', ' ');
+  //Serial.println(result);
+  char jsonArray [result.length()+1];
+  result.toCharArray(jsonArray,sizeof(jsonArray));
+  jsonArray[result.length() + 1] = '\0';
+  StaticJsonDocument<1024> doc;
+
+  DeserializationError error = deserializeJson(doc, jsonArray);
+
+  // Test if parsing succeeds.
+  if (error) {
+    Serial.print(F("deserializeJson() failed: "));
+    Serial.println(error.c_str());
+    return;
+  }
+    
+  float _temperature = doc["main"]["temp"];
+  String _weather = doc["weather"]["main"];
+  String _description = doc["weather"]["description"];
+  float _wind = doc["wind"]["speed"];
+  weatherDescription = _description;
+  weatherDescription.setCharAt(0, weatherDescription.charAt(0) - 32);
+  weather = _weather;
+  extTemperature = _temperature;
+  wind = _wind;
 }
 
-void fiveDayFcast(void) {
-  OWM_fiveForecast *ow_fcast5 = new OWM_fiveForecast[40];
-  byte entries = owF5.updateForecast(ow_fcast5, 40, ow_key, countryCode, cityName, "metric");
-  Serial.print("Entries: "); Serial.println(entries+1);
-  for (byte i = 0; i <= entries; ++i) { 
-    Serial.print(dateTime(ow_fcast5[i].dt) + ": icon: ");
-    Serial.print(ow_fcast5[i].icon + ", temp.: [" + ow_fcast5[i].t_min + ", " + ow_fcast5[i].t_max + "], press.: " + ow_fcast5[i].pressure);
-    Serial.println(", descr.: " + ow_fcast5[i].description + ":: " + ow_fcast5[i].cond + " " + ow_fcast5[i].cond_value);
-  }
-  delete[] ow_fcast5;
+void displayConditions(String description, float extTemperature, float intTemperature, float wind)
+{
+  u8g2.clearBuffer();
+  u8g2.setCursor(0, 12);
+  u8g2.print(description);
+
+  u8g2.setCursor(0,30);
+  u8g2.print("Ext:"); 
+  u8g2.print(extTemperature,1);
+  u8g2.print((char)223);
+  u8g2.print("C  ");
+
+  u8g2.print("Int:");
+  u8g2.print(intTemperature, 1);
+  u8g2.print((char)223);
+  u8g2.print("C");
+                                         
+  u8g2.sendBuffer();
 }
 
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     if (lastRefresh == 0 || lastRefresh > refreshInterval * 1000 && millis() - lastRefresh > refreshInterval * 1000) {
       Serial.println("Current Conditions: ");
-      currentConditions();
-      Serial.println("Five days forecast: ");
-      fiveDayFcast();
+      getWeatherData();
+
+      displayConditions(weather, extTemperature, intTemperature, wind);
+      
       lastRefresh = millis();
     }
   }
