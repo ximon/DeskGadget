@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <U8g2lib.h>
+#include <NTPClient.h>
 
 #ifdef U8X8_HAVE_HW_SPI
 #include <SPI.h>
@@ -26,6 +27,9 @@ const String countryCode = "gb";
 const String cityName = "Stockton-On-Tees";
 
 WiFiClient client;
+
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP);
 
 // Open Weather Map API server name
 const char server[] = "api.openweathermap.org";
@@ -52,6 +56,7 @@ String weatherDescription = "";
 float intTemperature = 95;
 float extTemperature;
 float wind;
+String timestamp;
 
 void connectWiFiInit(void) {
   WiFi.hostname(nodename);
@@ -138,11 +143,14 @@ void setup() {
   Serial.println("\n\n\n");
   u8g2.begin();  
   u8g2.enableUTF8Print();
+  u8g2.setContrast(127);
 
   connectWiFiInit();
   printWiFiStatus();
-  delay(1000);
   MDNS.begin(nodename);
+  timeClient.begin();
+
+  delay(1000);
 }
 
 void getWeatherData() {
@@ -187,6 +195,8 @@ void getWeatherData() {
   String _weather = doc["weather"]["main"];
   String _description = doc["weather"]["description"];
   float _wind = doc["wind"]["speed"];
+  String _timestamp = doc["dt"];
+  timestamp = _timestamp;
   weatherDescription = _description;
   weatherDescription.setCharAt(0, weatherDescription.charAt(0) - 32);
   weather = _weather;
@@ -194,11 +204,17 @@ void getWeatherData() {
   wind = _wind;
 }
 
-void displayConditions(String description, float extTemperature, float intTemperature, float wind)
+void displayConditions(String weather, float extTemperature, float intTemperature, float wind)
 {
   u8g2.clearBuffer();
-  u8g2.setCursor(0, 12);
-  u8g2.print(description);
+  u8g2.setFont(u8g2_font_open_iconic_www_2x_t);
+  u8g2.setCursor(0,12);
+  u8g2.print((char)223);
+
+  
+  u8g2.setFont(u8g2_font_bitcasual_t_all);
+  u8g2.setCursor(16, 12);
+  u8g2.print(weather);
 
   u8g2.setCursor(0,30);
   u8g2.print("Ext:"); 
@@ -214,16 +230,31 @@ void displayConditions(String description, float extTemperature, float intTemper
   u8g2.sendBuffer();
 }
 
+void displayClock()
+{
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_logisoso28_tn);
+  u8g2.setCursor(0, 31);
+  
+  u8g2.print(timeClient.getFormattedTime());
+  
+  u8g2.sendBuffer();
+}
+
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
-    if (lastRefresh == 0 || lastRefresh > refreshInterval * 1000 && millis() - lastRefresh > refreshInterval * 1000) {
-      Serial.println("Current Conditions: ");
-      getWeatherData();
+    timeClient.update();
+    displayClock();
 
-      displayConditions(weather, extTemperature, intTemperature, wind);
+    /*
+    if (lastRefresh == 0 || lastRefresh > refreshInterval * 1000 && millis() - lastRefresh > refreshInterval * 1000) {
+      //Serial.println("Current Conditions: ");
+      //getWeatherData();
+      //displayConditions(weather, extTemperature, intTemperature, wind);
       
       lastRefresh = millis();
     }
+    */
   }
   delay(1000);
 }
