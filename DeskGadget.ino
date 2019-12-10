@@ -4,6 +4,8 @@
 #include <U8g2lib.h>
 #include <NTPClient.h>
 
+#include <FunctionFSM.h>
+
 #ifdef U8X8_HAVE_HW_SPI
 #include <SPI.h>
 #endif
@@ -19,8 +21,13 @@
 #include <TimeLib.h>
 
 const char *nodename    = "esp8266-weather";
+/*
 const char *wifi_ssid   = "VM7430922";
-const char *wifi_passwd = "8dqkvzYTjchy";   
+const char *wifi_passwd = "8dqkvzYTjchy";
+*/
+
+const char *wifi_ssid   = "ITDP";
+const char *wifi_passwd = "HMRCLogin";
 
 const String APIKEY      = "1999df78b50d8d6cad6efef4a8e0ac2a";
 const String countryCode = "gb";
@@ -43,7 +50,7 @@ typedef enum wifi_s {
 } WifiStat;
 
 
-
+const int transitionTime = 5000;
 const int refreshInterval = 60;//seconds
 int lastRefresh = 0;
 
@@ -57,6 +64,86 @@ float intTemperature = 95;
 float extTemperature;
 float wind;
 String timestamp;
+
+void clock_update()
+{
+  Serial.println("Clock Update");
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_logisoso28_tn);
+  u8g2.setCursor(2, 31);
+  
+  u8g2.print(timeClient.getFormattedTime());
+  
+  u8g2.sendBuffer();
+}
+
+void weather_update() {
+  Serial.println("Weather Update");
+
+  if (doesWeatherNeedUpdating()) {
+    getWeatherData();
+  }
+  
+  displayConditions(weather, extTemperature, intTemperature, wind);
+}
+
+
+FunctionState show_clock(nullptr, &clock_update, nullptr);
+FunctionState show_weather(nullptr, &weather_update, nullptr);
+
+FunctionFsm fsm(&show_clock);
+
+void initFsm(){
+  fsm.add_timed_transition(&show_clock, &show_weather, transitionTime, nullptr);
+  fsm.add_timed_transition(&show_weather, &show_clock, transitionTime, nullptr);
+}
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("\n\n\n");
+  u8g2.begin();  
+  u8g2.enableUTF8Print();
+  u8g2.setContrast(127);
+
+  connectWiFiInit();
+  printWiFiStatus();
+  MDNS.begin(nodename);
+  timeClient.begin();
+
+  delay(1000);
+  initFsm();
+}
+
+void loop() {
+  fsm.run_machine();
+  timeClient.update();
+      
+  if (WiFi.status() == WL_CONNECTED) {
+    
+  } else {
+    Serial.print("WiFi Status = ");
+    switch (WiFi.status()) {
+      case WL_CONNECTED:
+        Serial.println("Connected");
+        break;
+      case WL_IDLE_STATUS:
+        Serial.println("Idle");
+        break;
+      case WL_NO_SSID_AVAIL:
+        Serial.println("No SSID");
+        break;
+      case WL_CONNECT_FAILED:
+        Serial.println("Connect Failed");
+        break;
+      case WL_CONNECTION_LOST:
+        Serial.println("Connection Lost");
+        break;
+      case WL_DISCONNECTED:
+        Serial.println("Disconnected");
+        break;
+    } 
+  }
+}
 
 void connectWiFiInit(void) {
   WiFi.hostname(nodename);
@@ -138,21 +225,6 @@ String dateTime(String timestamp) {
   return String(buff);
 }
 
-void setup() {
-  Serial.begin(115200);
-  Serial.println("\n\n\n");
-  u8g2.begin();  
-  u8g2.enableUTF8Print();
-  u8g2.setContrast(127);
-
-  connectWiFiInit();
-  printWiFiStatus();
-  MDNS.begin(nodename);
-  timeClient.begin();
-
-  delay(1000);
-}
-
 void getWeatherData() {
   if (client.connect(server, 80)){ //starts client connection, checks for connection
     client.println("GET /data/2.5/weather?q=" + cityName + "," + countryCode + "&units=metric&APPID=" + APIKEY);
@@ -198,31 +270,41 @@ void getWeatherData() {
   String _timestamp = doc["dt"];
   timestamp = _timestamp;
   weatherDescription = _description;
-  weatherDescription.setCharAt(0, weatherDescription.charAt(0) - 32);
+  //weatherDescription.setCharAt(0, weatherDescription.charAt(0) - 32);
   weather = _weather;
   extTemperature = _temperature;
   wind = _wind;
+
+  Serial.println("Weather Description:");
+  Serial.println(weatherDescription);
+
+  Serial.println("Weather:");
+  Serial.println(weather);
+
+  lastRefresh = millis();
 }
 
 void displayConditions(String weather, float extTemperature, float intTemperature, float wind)
 {
   u8g2.clearBuffer();
+  /*
   u8g2.setFont(u8g2_font_open_iconic_www_2x_t);
   u8g2.setCursor(0,12);
   u8g2.print((char)223);
-
+  */
   
-  u8g2.setFont(u8g2_font_bitcasual_t_all);
+  u8g2.setFont(u8g2_font_logisoso16_tf);
   u8g2.setCursor(16, 12);
   u8g2.print(weather);
 
-  u8g2.setCursor(0,30);
-  u8g2.print("Ext:"); 
+  u8g2.setCursor(0, 30);
+  u8g2.print("Out:"); 
   u8g2.print(extTemperature,1);
   u8g2.print((char)223);
-  u8g2.print("C  ");
+  u8g2.print("C");
 
-  u8g2.print("Int:");
+  u8g2.setCursor(64, 30);
+  u8g2.print("In:");
   u8g2.print(intTemperature, 1);
   u8g2.print((char)223);
   u8g2.print("C");
@@ -230,31 +312,6 @@ void displayConditions(String weather, float extTemperature, float intTemperatur
   u8g2.sendBuffer();
 }
 
-void displayClock()
-{
-  u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_logisoso28_tn);
-  u8g2.setCursor(0, 31);
-  
-  u8g2.print(timeClient.getFormattedTime());
-  
-  u8g2.sendBuffer();
-}
-
-void loop() {
-  if (WiFi.status() == WL_CONNECTED) {
-    timeClient.update();
-    displayClock();
-
-    /*
-    if (lastRefresh == 0 || lastRefresh > refreshInterval * 1000 && millis() - lastRefresh > refreshInterval * 1000) {
-      //Serial.println("Current Conditions: ");
-      //getWeatherData();
-      //displayConditions(weather, extTemperature, intTemperature, wind);
-      
-      lastRefresh = millis();
-    }
-    */
-  }
-  delay(1000);
+bool doesWeatherNeedUpdating() {
+  return (lastRefresh == 0 || lastRefresh > refreshInterval * 1000 && millis() - lastRefresh > refreshInterval * 1000);
 }
