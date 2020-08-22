@@ -4,7 +4,7 @@
 #include <U8g2lib.h>
 #include <NTPClient.h>
 
-#include <FunctionFSM.h>
+#include <FiniteStateMachine.h>
 
 #ifdef U8X8_HAVE_HW_SPI
 #include <SPI.h>
@@ -21,14 +21,14 @@
 #include <TimeLib.h>
 
 const char *nodename    = "esp8266-weather";
-/*
+///*
 const char *wifi_ssid   = "VM7430922";
 const char *wifi_passwd = "8dqkvzYTjchy";
-*/
-
+//*/
+/*
 const char *wifi_ssid   = "ITDP";
 const char *wifi_passwd = "HMRCLogin";
-
+*/
 const String APIKEY      = "1999df78b50d8d6cad6efef4a8e0ac2a";
 const String countryCode = "gb";
 const String cityName = "Stockton-On-Tees";
@@ -101,48 +101,22 @@ void initFsm(){
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n\n");
-  u8g2.begin();  
-  u8g2.enableUTF8Print();
-  u8g2.setContrast(127);
+  //u8g2.begin();  
+  //u8g2.enableUTF8Print();
+  //u8g2.setContrast(127);
 
   connectWiFiInit();
-  printWiFiStatus();
+  //printWiFiStatus();
   MDNS.begin(nodename);
   timeClient.begin();
 
   delay(1000);
-  initFsm();
+  //initFsm();
 }
 
 void loop() {
-  fsm.run_machine();
-  timeClient.update();
-      
-  if (WiFi.status() == WL_CONNECTED) {
-    
-  } else {
-    Serial.print("WiFi Status = ");
-    switch (WiFi.status()) {
-      case WL_CONNECTED:
-        Serial.println("Connected");
-        break;
-      case WL_IDLE_STATUS:
-        Serial.println("Idle");
-        break;
-      case WL_NO_SSID_AVAIL:
-        Serial.println("No SSID");
-        break;
-      case WL_CONNECT_FAILED:
-        Serial.println("Connect Failed");
-        break;
-      case WL_CONNECTION_LOST:
-        Serial.println("Connection Lost");
-        break;
-      case WL_DISCONNECTED:
-        Serial.println("Disconnected");
-        break;
-    } 
-  }
+  //fsm.run_machine();
+  timeClient.update();    
 }
 
 void connectWiFiInit(void) {
@@ -152,7 +126,7 @@ void connectWiFiInit(void) {
   WiFi.begin(ssid.c_str(), passwd.c_str());
 
   Serial.print("Connecting");
-
+  /*
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_open_iconic_www_4x_t);
   u8g2.drawGlyph(0, 32, 81);
@@ -164,13 +138,14 @@ void connectWiFiInit(void) {
   u8g2.setCursor(38, 30);
   u8g2.print("Connecting");
   u8g2.sendBuffer();  
-  
+  */
 
   int dotCount = 0;
   while (WiFi.status() != WL_CONNECTED) {
     dotCount++;
-
+    
     Serial.print(".");
+    /*
     u8g2.print(".");
 
     if (dotCount >= 10) {
@@ -182,7 +157,7 @@ void connectWiFiInit(void) {
        u8g2.print("Connecting");
     }
     u8g2.sendBuffer();
-     
+    */ 
     delay(100);
   }
 }
